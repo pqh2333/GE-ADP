@@ -1,191 +1,19 @@
-import numpy as np
-import node2vec
-import networkx as nx
-import math
-import time
-import random
-import matplotlib.pyplot as plt
-import datetime
-import timeit
+"""
+author: pqh
+date:2021.05.16
+"""
+from Sioux_func import *
 # input: cur and best: J + zeta*(M - J^2)^1/2
 # return: error rate: (cur-best)/best
-def assess(cur: list, best: list):
-    sum = 0
-    for i in range(len(cur)):
-        if(i == 0 or i == 15):
-            continue
-        a = cur[i] - best[i]
-        sum += (a/best[i])
-    sum /= 23
-    return sum
-
-# input: G and varaince
-# return : best_policy
-def best_policy(G: nx.Graph(), edges_sta: list, zeta: float):
-    p = nx.shortest_path(G,target = 15, weight='weight', method='dijkstra')
-    next_node_start = [0 for x in range(25)]
-    for i in range(1,25):
-        if(i == 15):
-            continue
-        next_node_start[i] = p.get(i)[1]
-    change = 1
-    next_node = list(next_node_start)
-    node_to_node = []
-    node_to_node.append([])
-    for i in range(1,25):
-        inn = []
-        for j in range(1,25):
-            if(edges_sta[i][j] != 0):
-                inn.append(j)
-        node_to_node.append(inn)
-    while(change > 0):
-        change = 0
-        A = np.zeros((46,46))
-        b = np.zeros(46)
-        for i in range(23):
-            start_node = i+1
-            if(start_node >= 15):
-                start_node += 1
-            end_node = next_node[start_node]
-            weight = G.get_edge_data(start_node,end_node).get('weight')
-            A[i][i] = 1
-            A[i+23][i+23] = 1
-            b[i] = weight
-            b[i+23] = weight**2 + edges_sta[start_node][end_node]**2
-            if end_node < 15:
-                A[i][end_node-1] = -1
-                A[i+23][end_node-1] = -2 * weight
-                A[i+23][end_node-1 + 23] = -1
-            elif end_node > 15:
-                A[i][end_node-2] = -1
-                A[i+23][end_node-2] = -2 * weight
-                A[i+23][end_node-2 + 23] = -1
-        x = np.dot(np.linalg.inv(A),b.T)
-        for i in range(25):
-            if(i == 0 or i == 15):
-                continue
-            inn = node_to_node[i]
-            cur_node_next = next_node[i]
-            cur_min = 0
-            weight = G.get_edge_data(i,cur_node_next).get('weight')
-            if(cur_node_next == 15):
-                cur_min = weight + zeta * math.sqrt(edges_sta[i][cur_node_next]**2)
-            elif(cur_node_next < 15):
-                cur_min = weight + x[cur_node_next-1] + zeta * math.sqrt(edges_sta[i][cur_node_next]**2 + x[cur_node_next-1 + 23] - x[cur_node_next-1]**2)
-            else:
-                cur_min = weight + x[cur_node_next-2] + zeta * math.sqrt(edges_sta[i][cur_node_next]**2 + x[cur_node_next-2 + 23] - x[cur_node_next-2]**2)
-            for end in inn:
-                weight1 = G.get_edge_data(i,end).get('weight')
-                cur = 0
-                if(end == 15):
-                    cur = weight1 + zeta * math.sqrt(edges_sta[i][end]**2)
-                elif(end < 15):
-                    cur = weight1 + x[end-1] + zeta * math.sqrt(edges_sta[i][end]**2 + x[end-1 + 23] - x[end-1]**2)
-                else:
-                    cur = weight1 + x[end-2] + zeta * math.sqrt(edges_sta[i][end]**2 + x[end-2 + 23] - x[end-2]**2)
-                if(cur < cur_min -0.00000001):
-                    cur_min = cur
-                    next_node[i] = end
-                    change += 1
-    return list(next_node)
-# input: policy,G and varaince
-# output: cur
-def policy_evaluate(next_node: list , G: nx.Graph(), edges_sta: list, zeta: float):
-    A = np.zeros((46,46))
-    b = np.zeros(46)
-    for i in range(23):
-        start_node = i+1
-        if(start_node >= 15):
-            start_node += 1
-        end_node = next_node[start_node]
-        weight = G.get_edge_data(start_node,end_node).get('weight')
-        A[i][i] = 1
-        A[i+23][i+23] = 1
-        b[i] = weight
-        b[i+23] = weight**2 + edges_sta[start_node][end_node]**2
-        if end_node < 15:
-            A[i][end_node-1] = -1
-            A[i+23][end_node-1] = -2 * weight
-            A[i+23][end_node-1 + 23] = -1
-        elif end_node > 15:
-            A[i][end_node-2] = -1
-            A[i+23][end_node-2] = -2 * weight
-            A[i+23][end_node-2 + 23] = -1
-    x = np.dot(np.linalg.inv(A),b.T)
-    cur = [0 for x in range(25)]
-    k = 0
-    for i in range(25):
-        if i == 0 or i == 15:
-            continue
-        cur[i] = x[k] + zeta * math.sqrt(x[k+23]-x[k]**2)
-        k += 1
-    return list(cur)
-# input: d,zeta and error rate
-def plot1(d_arr: list, zeta_arr: list, error_arr: list, Tmax: int):
-    plt.title('Convergence Results')
-    x = np.arange(Tmax)
-    k = 0
-    l = []
-    for d in d_arr:
-        for zeta in zeta_arr:
-            x = np.arange(len(error_arr[k]))
-            plt.plot(x,error_arr[k])
-            l.append("d:"+str(d) + ",zeta:" + str(zeta))
-            k+=1
-    plt.legend(l,loc = 'upper right')
-    plt.show()
-def plot2(d_arr:list, error_ave:list, time_ave:list):
-    x = d_arr
-    y1 = error_ave
-    y2 = time_ave
-    fig = plt.figure()
-    plt.title('Error rate and Efficiency')
-    ax1 = fig.add_subplot(111)
-    ax1.plot(x, y1)
-    ax1.set_ylabel('Error rate')
-    ax1.set_title("Error rate and Efficiency")
-
-    ax2 = ax1.twinx()  # this is the important function
-    ax2.plot(x, y2, 'r')
-    ax2.set_xlim([0,24])
-    ax2.set_ylabel('Runtime')
-    # ax2.set_xlabel('Same X for both exp(-x) and ln(x)')
-    plt.show()
-# def random_start(node_to_node: list):
-def plot3(d_arr:list, error_ave: list, time_ave:list, error_sta:list, time_sta:list):
-    x = d_arr
-    y1 = np.array(error_ave)
-    y2 = np.array(time_ave)
-    error_sta = np.array(error_sta)
-    time_sta = np.array(time_sta)
-    fig = plt.figure()
-    plt.title('Error rate and Efficiency')
-    ax1 = fig.add_subplot(111)
-    ax1.plot(x, y1,'b',)
-    ax1.set_ylabel('Error rate')
-    ax1.set_title("Error rate and Efficiency")
-    ax2 = ax1.twinx()  # this is the important function
-    ax2.plot(x, y2, 'r')
-    ax2.set_xlim([0,24])
-    ax2.set_ylabel('Runtime')
-    ax1.plot(x,y1+error_sta)
-    plt.fill_between(x, y1-error_sta, y1+error_sta, color = 'cornflowerblue')
-    plt.fill_between(x, y2-time_sta, y2+time_sta, color = 'lightcoral')
-    plt.show()
-
-def main():
-    #  -----------define G  and  edges_var:
-    # parameter: k         preserve: G_var        once good G_var appear, save G_var
+#  -----------define G  and  edges_var:
+# parameter: k         preserve: G_var        once good G_var appear, save G_var
+def sioux_ex2(zeta: float):
     k = 0.6
     nodes = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
     edges = [(1,2,360),(1,3,240),(2,6,300),(3,4,241),(3,12,242),(4,5,120),(4,11,361),(5,6,239),(5,9,301),(6,8,121),(7,8,180),
              (7,18,122),(8,9,60),(8,16,302),(9,10,181),(10,11,299),(10,15,361),(10,16,238),(10,17,480),(11,12,362),(11,14,243),
              (12,13,182),(13,24,237),(14,15,298),(14,23,244),(15,19,179),(15,22,178),(16,17,119),(16,18,182),(17,19,118),(18,20,244),
              (19,20,245),(20,21,359),(20,22,303),(21,22,123),(21,24,183),(22,23,236),(23,24,124)]
-    # edges = [(1,2,6),(1,3,4),(2,6,5),(3,4,4),(3,12,4),(4,5,2),(4,11,6),(5,6,4),(5,9,5),(6,8,2),(7,8,3),
-    #          (7,18,2),(8,9,10),(8,16,5),(9,10,3),(10,11,5),(10,15,6),(10,16,4),(10,17,8),(11,12,6),(11,14,4),
-    #          (12,13,3),(13,24,4),(14,15,5),(14,23,4),(15,19,3),(15,22,3),(16,17,2),(16,18,3),(17,19,2),(18,20,4),
-    #          (19,20,4),(20,21,6),(20,22,5),(21,22,2),(21,24,3),(22,23,4),(23,24,2)]
     G = nx.Graph()
     G.add_nodes_from(nodes)
     G.add_weighted_edges_from(edges)
@@ -198,7 +26,6 @@ def main():
         edges_wei[ele[0]][ele[1]] = ele[2]
         edges_wei[ele[1]][ele[0]] = ele[2]
     # ----------edges_sta:
-    print(edges_sta)
     edges_sta = [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                  [0, 0, 125.88628295971701, 128.9278761813104, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
                  [0, 125.88628295971701, 0, 0, 0, 0, 163.467915602572, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -236,19 +63,18 @@ def main():
                 inn.append(j)
         node_to_node.append(inn)
     #  --------get warm start policy:
-    p = nx.shortest_path(G,target = 15, weight='weight', method='dijkstra')
+    p1 = nx.shortest_path(G,target = 15, weight='weight', method='dijkstra')
     next_node_start = [0 for x in range(25)]
     for i in range(1,25):
         if(i == 15):
             continue
-        next_node_start[i] = p.get(i)[1]
+        next_node_start[i] = p1.get(i)[1]
     next_node_start = [0,2,6,1,3,4,8,18,7,10,11,4,11,12,15,0,17,19,20,15,21,24,15,14,23]
     # -----------------next_node_start--------------------
     # -------------------main part : choose 2 d and 2 zeta to get error rate every iter:
     # --------intial d1 d2 zeta1 zeta2 get all the evaluate
     d_arr = [4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]
     # zeta_arr = [1.64,3.09]
-    zeta_arr = [1.64]
     Tmax = 200
     error_arr = []
     # ---for each d and zeta combination, we need obtatin a average error rate list[[]]
@@ -257,163 +83,126 @@ def main():
     error_sta = []
     time_sta = []
     for d in d_arr:
-        for zeta in zeta_arr:
-            next_node_best = best_policy(G,edges_sta,zeta)
-            start_evaluate = policy_evaluate(list(next_node_start),G,edges_sta,zeta)
-            best_evaluate = policy_evaluate(next_node_best,G,edges_sta,zeta)
-            error_inn = []
-            error_inn.append(assess(start_evaluate,best_evaluate))
+        next_node_best = best_policy(G,copy.deepcopy(edges_sta),zeta)
+        start_evaluate = policy_evaluate(list(next_node_start),G,copy.deepcopy(edges_sta),zeta)
+        best_evaluate = policy_evaluate(list(next_node_best),G,copy.deepcopy(edges_sta),zeta)
+        error_inn = []
+        error_inn.append(assess(list(start_evaluate),list(best_evaluate)))
+        next_node = list(next_node_start)
+        m = 0
+        # time1 = 0
+        # error = 0
+        time_1 = []
+        error_1 = []
+#-----------initial---------
+        for m in range(1000):
+            # time_start = time.clock()
             next_node = list(next_node_start)
-            m = 0
-            # time1 = 0
-            # error = 0
-            time_1 = []
-            error_1 = []
-    #-----------initial---------
-            for m in range(1000):
-                # time_start = time.clock()
-                next_node = list(next_node_start)
-                error_inn = []
-                phi = np.load(file = "/Users/pqh/Desktop/route/Sioux/Sioux_d"+ str(d) + "_" + str(m) + "_phi.npy", allow_pickle = True)
+            error_inn = []
+            phi = np.load(file = "/Users/pqh/Desktop/route/Sioux/Sioux_d"+ str(d) + "_" + str(m) + "_phi.npy", allow_pickle = True)
+            J = [0 for x in range(25)]
+            M = [0 for x in range(25)]
+            t = 0
+            time2 = 0
+            while (t < Tmax):
+                A = np.zeros((23,d+1))
+                b = np.zeros(23)
                 J = [0 for x in range(25)]
                 M = [0 for x in range(25)]
-                t = 0
-                time2 = 0
-                while (t < Tmax):
-                    A = np.zeros((23,d+1))
-                    b = np.zeros(23)
-                    J = [0 for x in range(25)]
-                    M = [0 for x in range(25)]
-                    time_start = time.clock()
-                    for i in range(23):
-                        start_node = i+1
-                        if(start_node >= 15):
-                            start_node += 1
-                        end_node = next_node[start_node]
-                        # weight = G.get_edge_data(start_node,end_node).get('weight')
-                        weight = edges_wei[start_node][end_node]
-                        b[i] = weight
-                        for j in range(d+1):
-                            if(end_node != 15):
-                                A[i][j] = phi[start_node][j] - phi[end_node][j]
-                            else:
-                                A[i][j] = phi[start_node][j]
-                    w_j = np.dot(np.dot(np.linalg.inv(np.dot(A.T,A)),A.T),b)
-                    for i in range(25):
-                        if(i == 0 or i == 15):
+                time_start = time.clock()
+                for i in range(23):
+                    start_node = i+1
+                    if(start_node >= 15):
+                        start_node += 1
+                    end_node = next_node[start_node]
+                    # weight = G.get_edge_data(start_node,end_node).get('weight')
+                    weight = edges_wei[start_node][end_node]
+                    b[i] = weight
+                    for j in range(d+1):
+                        if(end_node != 15):
+                            A[i][j] = phi[start_node][j] - phi[end_node][j]
+                        else:
+                            A[i][j] = phi[start_node][j]
+                w_j = np.dot(np.dot(np.linalg.inv(np.dot(A.T,A)),A.T),b)
+                for i in range(25):
+                    if(i == 0 or i == 15):
+                        continue
+                    J[i] = np.dot(phi[i],w_j)
+                    if(J[i] < 0):
+                        J[i] = 0
+                b1 = np.zeros(23)
+                for i in range(23):
+                    start_node = i+1
+                    if(start_node >= 15):
+                        start_node += 1
+                    end_node = next_node[start_node]
+                    # weight = G.get_edge_data(start_node,end_node).get('weight')
+                    weight = edges_wei[start_node][end_node]
+                    standard = edges_sta[start_node][end_node]
+                    b1[i] = weight**2 + standard**2 + 2 * weight * J[end_node]
+                w_m = np.dot(np.dot(np.linalg.inv(np.dot(A.T,A)),A.T),b1)
+                time_end = time.clock()
+                for i in range(25):
+                    if(i == 0 or i == 15):
+                        continue
+                    M[i] = np.dot(phi[i],w_m)
+                    if(M[i] < J[i]**2):
+                        M[i] = J[i]**2+ 0.000001
+                li = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,16,17,18,19,20,21,22,23,24]
+                random.shuffle(li)
+                # 以下循环测试
+                for p in li:
+                    ff = 0
+                    p_next = next_node[p]
+                    p_weight = G.get_edge_data(p,p_next).get('weight')
+                    p_sta = edges_sta[p][next_node[p]]
+                    p_min = p_weight + J[p_next] + zeta * math.sqrt(p_sta**2 + M[p_next] - J[p_next]**2)
+                    neighbor_node = node_to_node[p]
+                    for q in neighbor_node:
+                        o = q
+                        flag = 0
+                        f = 0
+                        while(f < 25):
+                            if(o == 15):
+                                flag = 1
+                                break
+                            if(o == p):
+                                break
+                            o = next_node[o]
+                            f+=1
+                        if(flag == 0):
                             continue
-                        J[i] = np.dot(phi[i],w_j)
-                        if(J[i] < 0):
-                            J[i] = 0
-                    b1 = np.zeros(23)
-                    for i in range(23):
-                        start_node = i+1
-                        if(start_node >= 15):
-                            start_node += 1
-                        end_node = next_node[start_node]
-                        # weight = G.get_edge_data(start_node,end_node).get('weight')
-                        weight = edges_wei[start_node][end_node]
-                        standard = edges_sta[start_node][end_node]
-                        b1[i] = weight**2 + standard**2 + 2 * weight * J[end_node]
-                    w_m = np.dot(np.dot(np.linalg.inv(np.dot(A.T,A)),A.T),b1)
-                    for i in range(25):
-                        if(i == 0 or i == 15):
-                            continue
-                        M[i] = np.dot(phi[i],w_m)
-                        if(M[i] < J[i]**2):
-                            M[i] = J[i]**2+ 0.000001
-                    # gap = 0
-                    # for i in range(25):
-                    #     if(i == 0 or i == 25):
-                    #         continue
-                    #     if(J[i]**2 + 0.001 > M[i] and J[i]**2 + 0.001 -M[i] > gap):
-                    #         gap = J[i]**2 + 0.001 -M[i]
-                    # for i in range(25):
-                    #     if(i == 0 or i == 25):
-                    #         continue
-                    #     M[i] += gap
-                    li = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,16,17,18,19,20,21,22,23,24]
-                    random.shuffle(li)
-                    # 以下循环测试
-                    for p in li:
-                        ff = 0
-                        p_next = next_node[p]
-                        p_weight = G.get_edge_data(p,p_next).get('weight')
-                        p_sta = edges_sta[p][next_node[p]]
-                        p_min = p_weight + J[p_next] + zeta * math.sqrt(p_sta**2 + M[p_next] - J[p_next]**2)
-                        neighbor_node = node_to_node[p]
-                        for q in neighbor_node:
-                            o = q
-                            flag = 0
-                            f = 0
-                            while(f < 25):
-                                if(o == 15):
-                                    flag = 1
-                                    break
-                                if(o == p):
-                                    break
-                                o = next_node[o]
-                                f+=1
-                            if(flag == 0):
-                                continue
-                            weight = G.get_edge_data(p,q).get('weight')
-                            standard = edges_sta[p][q]
-                            p_cur = weight + J[q] + zeta * math.sqrt(standard**2 + M[q] - J[q]**2)
-                            if(p_min > p_cur + 0.00001):
-                                p_min = p_cur
-                                p_next = q
-                                ff = 1
-                        next_node[p] = p_next
-                        if(ff == 1) :
-                            break
-                    # ------以上是循环，试试-----------
-                    cur_evaluate = policy_evaluate(next_node,G,edges_sta,zeta)
-                    cur_access = assess(cur_evaluate,best_evaluate)
-                    # error_inn.append(cur_access)
-                    # -----if循环取最小
-                    # error_cycle_min = cur_access
-                    # cycle_f = 0
-                    # for ele in error_inn:
-                    #     if(cur_access < ele + 0.00001 and cur_access > ele - 0.00001):
-                    #         t = Tmax
-                    #         cycle_f = 1
-                    #     if(cycle_f == 1):
-                    #         if(ele < error_cycle_min):
-                    #             error_cycle_min = ele
-                    error_inn.append(cur_access)
-                    # if cycle_f == 1:
-                    #     error_inn.append(error_cycle_min)
-                    time_end = time.clock()
-                    time2 += (time_end-time_start)
-                    t+=1
-                error_arr.append(error_inn)
-                # 尝试
-                # cycle_min = error_inn[-1]
-                # for i in range(Tmax-1,Tmax-10,-1):
-                #     if(error_inn[i] < cycle_min):
-                #         cycle_min = error_inn[i]
-                # error += cycle_min
-                # -----------------
-                # error += error_inn[-1]
-                # print("d = " + str(d) +" m = " + str(m) + " t =" + str(time2))
-                # time1 += time2
-                time_1.append(time2)
-                error_1.append(error_inn[-1])
-            print(d)
-            # time1 /= 500
-            error_1 = np.array(error_1)
-            time_1 = np.array(time_1)
-            time_ave.append(np.mean(time_1))
-            time_sta.append(np.std(time_1,ddof = 1))
-            # error /= 500
-            error_ave.append(np.mean(error_1))
-            error_sta.append(np.std(error_1,ddof = 1))
+                        weight = G.get_edge_data(p,q).get('weight')
+                        standard = edges_sta[p][q]
+                        p_cur = weight + J[q] + zeta * math.sqrt(standard**2 + M[q] - J[q]**2)
+                        if(p_min > p_cur + 0.00001):
+                            p_min = p_cur
+                            p_next = q
+                            ff = 1
+                    next_node[p] = p_next
+                    # if(ff == 1) :
+                    #     break
+                # ------以上是循环，试试-----------
+                cur_evaluate = policy_evaluate(list(next_node),G,copy.deepcopy(edges_sta),zeta)
+                cur_access = assess(list(cur_evaluate),list(best_evaluate))
+                error_inn.append(cur_access)
+                # time_end = time.clock()
+                time2 += (time_end-time_start)
+                t+=1
+            error_arr.append(error_inn)
+            time_1.append(time2)
+            error_1.append(error_inn[-1])
+        print(d)
+        error_1 = np.array(error_1)
+        time_1 = np.array(time_1)
+        time_ave.append(np.mean(time_1))
+        time_sta.append(np.std(time_1,ddof = 1))
+        error_ave.append(np.mean(error_1))
+        error_sta.append(np.std(error_1,ddof = 1))
     print(error_ave)
     print(time_ave)
     print(error_sta)
     print(time_sta)
-    # plot1(d_arr, zeta_arr, error_arr,Tmax)
-    plot2(d_arr,error_ave,time_ave)
-    # plot3(d_arr,error_ave,time_ave,error_sta,time_sta)
-if __name__ == '__main__':
-    main()
+    # plot2(list(d_arr),copy.deepcopy(error_ave),copy.deepcopy(time_ave))
+    plot4(error_ave, time_ave, error_sta, time_sta)
+sioux_ex2(3.09)
