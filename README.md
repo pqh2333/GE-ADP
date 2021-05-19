@@ -9,7 +9,9 @@ This repo includes implements of GE-ADP in Sioux Network, Anaheim, Barcelona and
 - matplotlib
 
 ## Description:
-- `Sioux_Phi.py`, implemention of Node2vec in Sioux Network, the implementions on other networks are similar.
+- `Sioux_Phi.py`, Implemention of Node2vec in Sioux Network, the implementions on other networks are similar.
+
+- `Sioux_func.py`, Implemention of finding optimal strategy, strategy evaluation and ploting the result.
 
 - `Sioux_ex1.py`, Implemention of the convergence experiment of GE-ADP. 
 
